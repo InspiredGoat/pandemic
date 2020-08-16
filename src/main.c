@@ -200,6 +200,17 @@ void agents_steer(Vector2* directions, Vector2* positions, float* square_distanc
 
 	// Bounce off walls
 	for(ushort i = 0; i < agent_count; i++) {
+		if((positions[i].x < g_sections[0].x + 10 && directions[i].x < 0) || (positions[i].x > g_sections[0].width - 10 && directions[i].x > 0)) {
+			directions[i].x *= -1;
+		}
+
+		if((positions[i].y < g_sections[0].y + 10 && directions[i].y < 0) || (positions[i].y > g_sections[0].height - 10 && directions[i].y > 0)) {
+			directions[i].y *= -1;
+		}
+//		for(ushort j = 0; j < g_section_count; j++)
+//			// If is touching wall, invert directions pointing at wall
+//			if(positions[i].x < ) {
+//			}
 	}
 }
 

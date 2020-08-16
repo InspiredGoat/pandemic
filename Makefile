@@ -1,4 +1,4 @@
-SOURCES = main.c graph.c
+SOURCES = main.c graph.c slider.c
 SRC = $(addprefix src/, $(SOURCES))
 OBJ = $(addsuffix .o, $(addprefix bin/, $(basename $(notdir $(SRC)))));
 INCLUDE = -I include
