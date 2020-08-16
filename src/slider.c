@@ -9,7 +9,8 @@ Slider* Slider_create(int x, int y, int width, int height, float* value, float m
 	slider->width = width;
 	slider->height = height;
 
-	slider->ratio = 0;
+	// Find the ratio according to the current value
+	slider->ratio = (*value - min_value) / (max_value - min_value);
 	slider->value = value;
 	slider->min_value = min_value;
 	slider->max_value = max_value;
@@ -40,6 +41,8 @@ void Slider_update(Slider* slider) {
 }
 
 void Slider_draw(Slider* slider, Color filled, Color empty) {
+	int x_offset = (int) ((float)slider->width * slider->ratio);
 	DrawRectangle(slider->x, slider->y, slider->width, slider->height, empty);
-	DrawRectangle(slider->x, slider->y, (int) ((float)slider->width * slider->ratio), slider->height, filled);
+	DrawRectangle(slider->x, slider->y, x_offset, slider->height, filled);
+	DrawCircle(x_offset+15, slider->y +1 , 5.f, filled);
 }
