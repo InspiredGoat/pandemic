@@ -13,8 +13,9 @@ typedef struct {
 	Vector2* positions;
 	Vector2* directions;
 	float* square_distances;
-	float* infected_periods;
-	bool* simulate;
+	byte* infected_periods;
+	byte* time_till_death;
+	bool* simulated;
 
 	ushort count;
 	uint square_distance_count;
@@ -42,7 +43,7 @@ float g_social_distance = 20;
 float g_social_distance_factor = .5f;
 
 // Disease parameters
-float g_infection_radius = 22;
+float g_infection_radius = 42;
 float g_infection_chance = 0.2f;
 float g_infection_duration = 10;
 
@@ -112,25 +113,6 @@ int max(int x, int y) {
 //----------------------------------------------------------------------------------------------------------------------------------
 
 
-// World functions
-
-bool section_is_valid(Rectangle section) {
-	for(ushort i = 0; i < g_section_count; i++) {
-		if(CheckCollisionRecs(section, g_sections[i]))
-			return true;
-	}
-
-	return false;
-}
-
-void section_add(Rectangle section) {
-	
-}
-
-
-//----------------------------------------------------------------------------------------------------------------------------------
-
-
 // Player functions
 
 void player_move(Camera2D* camera, float delta) {
@@ -143,8 +125,8 @@ void player_move(Camera2D* camera, float delta) {
 		camera->target.y -= (mouse_pos.y - mouse_pos_prev.y) / camera->zoom;
 	}
 
-	camera->target.x = Clamp(camera->target.x, g_sections[0].x-50, g_sections[0].width+50);
-	camera->target.y = Clamp(camera->target.y, g_sections[0].y-50, g_sections[0].height+50);
+	camera->target.x = Clamp(camera->target.x, -50, g_world_width+50);
+	camera->target.y = Clamp(camera->target.y, -50, g_world_height+50);
 
 	camera->offset.x = GetScreenWidth() / 2;
 	camera->offset.y = GetScreenHeight()  / 2;
@@ -168,10 +150,10 @@ Population* Population_create(ushort agent_count) {
 
 	population->positions = (Vector2*) malloc(sizeof(Vector2) * agent_count);
 	population->directions = (Vector2*) malloc(sizeof(Vector2) * agent_count);
-	population->infected_periods = (byte*) malloc(sizeof(float) * agent_count);
+	population->infected_periods = (byte*) malloc(sizeof(byte) * agent_count);
+	population->time_till_death = (byte*) malloc(sizeof(byte) * agent_count);
+	population->simulated = (bool*) malloc(sizeof(bool) * agent_count);
 
-	for(uint i = 0; i < agent_count; i++)
-		population->infected_periods[i] = 0;
 
 	uint n = (uint) (agent_count-1);
 	n = n*n*2;
@@ -206,7 +188,7 @@ void agents_find_distances(float* square_distances, Vector2* positions, ushort a
 	}
 }
 
-void agents_steer(Vector2* directions, Vector2* positions, byte* infected_periods, float* square_distances, ushort agent_count) {
+void agents_steer(Vector2* directions, Vector2* positions, bool* simulated, float* square_distances, ushort agent_count) {
 	for(ushort i = 0; i < agent_count; i++) {
 		Vector2 repulsion;
 		repulsion.x = 0;
@@ -216,7 +198,7 @@ void agents_steer(Vector2* directions, Vector2* positions, byte* infected_period
 		for(ushort j = 0; j < agent_count; j++) {
 			float dist = square_distances[i*agent_count + j];
 
-			if(j == i || dist > g_social_distance * g_social_distance || infected_periods[j] >= g_infection_duration)
+			if(j == i || dist > g_social_distance * g_social_distance || !simulated[j])
 				continue;
 
 			repulsion.x += (positions[i].x - positions[j].x) / dist;
@@ -236,15 +218,13 @@ void agents_steer(Vector2* directions, Vector2* positions, byte* infected_period
 
 	// Bounce off walls
 	for(ushort i = 0; i < agent_count; i++) {
-		for(ushort j = 0; j < g_section_count; j++) {
 			
-			if((positions[i].x < g_sections[j].x + 10 && directions[i].x < 0) || (positions[i].x > g_sections[j].width - 10 && directions[i].x > 0)) {
-				directions[i].x *= -1;
-			}
+		if((positions[i].x < 10 && directions[i].x < 0) || (positions[i].x > g_world_width - 10 && directions[i].x > 0)) {
+			directions[i].x *= -1;
+		}
 
-			if((positions[i].y < g_sections[j].y + 10 && directions[i].y < 0) || (positions[i].y > g_sections[j].height - 10 && directions[i].y > 0)) {
-				directions[i].y *= -1;
-			}
+		if((positions[i].y < 10 && directions[i].y < 0) || (positions[i].y > g_world_height - 10 && directions[i].y > 0)) {
+			directions[i].y *= -1;
 		}
 	}
 }
@@ -257,15 +237,19 @@ void agents_move(Vector2* directions, Vector2* positions, ushort agent_count, fl
 }
 
 // Add an "age" to determine how long the agent has been infected, this function runs once every tenth of a second and every tenth of a second has a 10% chance of incrementing the age by one. Meaning on average, the dots are incrementing their age by 1 every second. This is handled this way to distribute the agent's aging as to not result in huge spikes of mass death
-void agents_age(byte* infected_periods, uint agent_count) {
+void agents_age(byte* infected_periods, bool* simulated, byte* time_till_death, uint agent_count) {
 	for(ushort i = 0; i < agent_count; i++) {
 		if(infected_periods[i] > 0 && infected_periods[i] < g_infection_duration) {
-			infected_periods[i] += (rand()%100<10);
+			infected_periods[i] += (rand()%10==1);
 		}
+	}
+	
+	for(ushort i = 0; i < agent_count; i++) {
+		simulated[i] *= (infected_periods[i] < time_till_death[i]);
 	}
 }
 
-void agents_spread_disease(Vector2* positions, float* square_distances, byte* infected_periods, ushort agent_count) {
+void agents_spread_disease(Vector2* positions, float* square_distances, byte* infected_periods, bool* simulated, byte* time_till_death, ushort agent_count) {
 	// Agents must wait once second before able to spread disease as to prevent agents from infecting others the frame they become infected
 	for(ushort i = 0; i < agent_count; i++) {
 		if(infected_periods[i] == 1) {
@@ -274,22 +258,21 @@ void agents_spread_disease(Vector2* positions, float* square_distances, byte* in
 	}
 
 	for(ushort i = 0; i < agent_count; i++) {
-		if(infected_periods[i] > 0 && infected_periods[i] < g_infection_duration) {
+		if(infected_periods[i] > 0 && simulated[i]) {
 			for(ushort j = 0; j < agent_count; j++) {
-				if(infected_periods[j] == 0) {
+				if(infected_periods[j] == 0 && simulated[i]) {
 					float dist = square_distances[i*agent_count + j];
 
-					if(randf() <= g_infection_chance && dist < (g_infection_radius * g_infection_radius))
-						infected_periods[j] = 1;
+					infected_periods[j] = randf() <= g_infection_chance && dist < (g_infection_radius * g_infection_radius);
+					time_till_death[j] = (byte) g_infection_duration;
 				}
 			}
 		}
 	}
 }
 
-void agents_draw(Vector2* positions, byte* infected_periods, ushort agent_count) {
-	Color white_color = {  100 * g_social_distance_factor, 100 * g_social_distance_factor, 100 * g_social_distance_factor};
-	white_color.a = 255;
+void agents_draw(Vector2* positions, byte* infected_periods, bool* simulated, ushort agent_count) {
+	Color white_color = {  100 * g_social_distance_factor, 100 * g_social_distance_factor, 100 * g_social_distance_factor, 255};
 
 	Color red_color = { 0 };
 	red_color.r = 50 * g_infection_chance + 50;
@@ -302,31 +285,31 @@ void agents_draw(Vector2* positions, byte* infected_periods, ushort agent_count)
 	}
 
 	for(ushort i = 0; i < agent_count; i++) {
-		if(infected_periods[i] > 0 && infected_periods[i] < g_infection_duration) {
+		if(infected_periods[i] > 0 && simulated[i]) {
 			DrawCircle(positions[i].x, positions[i].y, g_infection_radius, red_color);
 		}
 	}
 
 	for(ushort i = 0; i < agent_count; i++) {
-		if(infected_periods[i] == g_infection_duration) {
-			DrawCircle(positions[i].x, positions[i].y, 5, GRAY);
+		if(!simulated[i]) {
+			DrawCircle(positions[i].x, positions[i].y, 7, GRAY);
 		}
 
 		else if(infected_periods[i] > 0) {
-			DrawCircle(positions[i].x, positions[i].y, 5, RED);
+			DrawCircle(positions[i].x, positions[i].y, 7, RED);
 		}
 
 		else {
-			DrawCircle(positions[i].x, positions[i].y, 5, WHITE);
+			DrawCircle(positions[i].x, positions[i].y, 7, WHITE);
 		}
 	}
 }
 
-ushort agents_get_active_cases(byte* infected_periods, uint agent_count) {
+ushort agents_get_active_cases(byte* infected_periods, bool* simulated, uint agent_count) {
 	ushort res = 0;
 
 	for(ushort i = 0; i < agent_count; i++) {
-		res += (infected_periods[i] > 0 && infected_periods[i] < g_infection_duration);
+		res += (infected_periods[i] > 0 && simulated[i]);
 	}
 	
 	return res;
@@ -342,18 +325,26 @@ ushort agents_get_cases(byte* infected_periods, uint agent_count) {
 	return res;
 }
 
-ushort agents_get_removed(byte* infected_periods, uint agent_count) {
+ushort agents_get_removed(bool* simulated, uint agent_count) {
 	ushort res = 0;
 
 	for(ushort i = 0; i < agent_count; i++) {
-		res += (infected_periods[i] >= g_infection_duration);
+		res += (!simulated[i]);
 	}
 	
 	return res;
 }
 
-// Colors
+void agents_reset(Population* population) {
+	for(uint i = 0; i < population->count; i++)
+		population->infected_periods[i] = 0;
 
+	for(uint i = 0; i < population->count; i++)
+		population->simulated[i] = 1;
+
+	rand_vector_array(population->positions, population->count, 0, g_world_width);
+	rand_dir_array(population->directions, population->count);
+}
 
 
 //----------------------------------------------------------------------------------------------------------------------------------
@@ -365,29 +356,28 @@ int main() {
 
 	Population* population = Population_create(1000);
 
+	// Get pointers to all population arrays to simlify code later on
 	Vector2* positions = population->positions;
 	Vector2* directions = population->directions;
 	byte* infected_periods = population->infected_periods;
+	byte* time_till_death = population->time_till_death;
 	float* square_distances = population->square_distances;
+	bool* simulated = population->simulated;
 	ushort agent_count = population->count;
 
 	Font default_font;
-	default_font = LoadFontEx("Bwana.otf", 50, 0, 0);
+	default_font = LoadFontEx("Bwana.otf", 30, 0, 0);
 	SetTextureFilter(default_font.texture, FILTER_TRILINEAR);
+
+	g_world_width = 3000;
+	g_world_height = 3000;
 
 	Camera2D camera = { 0 };
 	camera.zoom = .231f;
-	camera.target.x = 863.64f;
-	camera.target.y = 1496.37f;
+	camera.target.x = (g_world_width / 2) - 550.f;
+	camera.target.y = g_world_height / 2;
 
-	float val = 0;
-
-	g_sections[0].x = 0;
-	g_sections[0].y = 0;
-	g_sections[0].width = 3000;
-	g_sections[0].height = 3000;
-
-	g_section_count = 1;
+	float simulation_speed = 1.f;
 
 	// Check for where the mouse is being used
 	// 0 means nowhere
@@ -399,48 +389,56 @@ int main() {
 	Graph* active_cases_graph = Graph_create(400);
 	Graph* removed_graph = Graph_create(400);
 
-	Slider* social_distance_slider = Slider_create(15, 80, 300, 3, &g_social_distance, 10.f, 100.f);
+	Slider* simulation_speed_slider = Slider_create(15, 80, 300, 3, &simulation_speed, 0.f, 4.f);
+	Slider* social_distance_slider = Slider_create(15, 80, 300, 3, &g_social_distance, 20.f, 120.f);
 	Slider* social_distance_importance_slider = Slider_create(15, 10, 300, 3, &g_social_distance_factor, 0.f, 1.f);
-	Slider* infection_radius_slider = Slider_create(15, 10, 300, 3, &g_infection_radius, 20.f, 50.f);
+	Slider* infection_radius_slider = Slider_create(15, 10, 300, 3, &g_infection_radius, 40.f, 120.f);
 	Slider* infection_chance_slider = Slider_create(15, 10, 300, 3, &g_infection_chance, 0.05f, 1.f);
 	Slider* infection_duration_slider = Slider_create(15, 10, 300, 3, &g_infection_duration, 5.f, 30.f);
 
-	rand_vector_array(positions, agent_count, 0, g_sections[0].width);
-	rand_dir_array(directions, agent_count);
-
 	float counter = 0;
+	float days = 1;
 	float graph_counter = 0;
 	float delta = 0;
+	float prev_time = GetTime();
 
 	uint total_cases;
 	uint active_cases;
 	uint removed;
 
+	agents_reset(population);
 	// Randomly infect one member of the population
 	infected_periods[0] = 1;
+	time_till_death[0] = (byte) g_infection_duration;
 
 	while(!WindowShouldClose()) {
 		float ui_ratio = GetScreenWidth() / 1280.f;
-		ui_ratio = Clamp(ui_ratio, .75f, 1.f);
+		ui_ratio = Clamp(ui_ratio, .85f, 1.f);
 
-		delta = GetFrameTime();
+		delta = (GetTime() - prev_time);
+		prev_time = GetTime();
 
-		counter += delta;
-		graph_counter += delta;
+		counter += delta * simulation_speed;
+		graph_counter += delta * simulation_speed;
 
+		if(delta > .2f) {
+			printf("Game frozen\n");
+			continue;
+		}
 
 		// Update UI
 		if(IsMouseButtonReleased(0))
 			cursor_focus = 0;
 
-		else if(IsMouseButtonPressed(0) && GetMouseX() > 320 * ui_ratio)	
+		else if(IsMouseButtonPressed(0) && GetMouseX() > 330 * ui_ratio)	
 			cursor_focus = 2;
 
-		else if(IsMouseButtonPressed(0) && GetMouseX() <= 320 * ui_ratio)	
+		else if(IsMouseButtonPressed(0) && GetMouseX() <= 330 * ui_ratio)	
 			cursor_focus = 1;
 
 		// Update interactable objects
 		if(cursor_focus <= 1) {
+			Slider_update(simulation_speed_slider);
 			Slider_update(social_distance_slider);
 			Slider_update(social_distance_importance_slider);
 			Slider_update(infection_chance_slider);
@@ -449,27 +447,28 @@ int main() {
 		}
 
 		// Handle player input
-		if((GetMouseX() > 320 * ui_ratio && cursor_focus == 0) || cursor_focus == 2) {
+		if((GetMouseX() > 330 * ui_ratio && cursor_focus == 0) || cursor_focus == 2) {
 			player_move(&camera, delta);
 		}
 
 		// Move the agents every frame
 		agents_find_distances(square_distances, positions, agent_count);
-		agents_steer(directions, positions, infected_periods, square_distances, agent_count);
-		agents_move(directions, positions, agent_count, delta);
+		agents_steer(directions, positions, simulated, square_distances, agent_count);
+		agents_move(directions, positions, agent_count, delta * simulation_speed);
 
 		// On game tick
 		if(counter > .1f) {
 			// Spread disease
-			agents_spread_disease(positions, square_distances, infected_periods, agent_count);
-			agents_age(infected_periods, agent_count);
+			agents_spread_disease(positions, square_distances, infected_periods, simulated, time_till_death, agent_count);
+			agents_age(infected_periods, simulated, time_till_death, agent_count);
+			days += .1f;
 			counter = 0;
 		}
 
 		// Get disease spread information
 		total_cases = agents_get_cases(infected_periods, agent_count);
-		active_cases = agents_get_active_cases(infected_periods, agent_count);
-		removed = agents_get_removed(infected_periods, agent_count);
+		active_cases = agents_get_active_cases(infected_periods, simulated, agent_count);
+		removed = agents_get_removed(simulated, agent_count);
 		
 		if(graph_counter > .2f) {
 			// Update graph values
@@ -480,11 +479,13 @@ int main() {
 		}
 
 		// Scale slider widths
-		social_distance_slider->width = 300*ui_ratio;
-		social_distance_importance_slider->width = 300*ui_ratio;
-		infection_chance_slider->width = 300*ui_ratio;
-		infection_duration_slider->width = 300*ui_ratio;
-		infection_radius_slider->width = 300*ui_ratio;
+		float slider_width = 310 * ui_ratio;
+		simulation_speed_slider->width = slider_width;
+		social_distance_slider->width = slider_width;
+		social_distance_importance_slider->width = slider_width;
+		infection_chance_slider->width = slider_width;
+		infection_duration_slider->width = slider_width;
+		infection_radius_slider->width = slider_width;
 		
 		// Rendering
 
@@ -494,10 +495,8 @@ int main() {
 		// Draw scene
 		BeginMode2D(camera);
 
-		agents_draw(positions, infected_periods, agent_count);
-		for(ushort i = 0; i < g_section_count; i++) {
-			DrawRectangleLinesEx(g_sections[i], 4, WHITE);
-		}
+		agents_draw(positions, infected_periods, simulated, agent_count);
+		DrawRectangleLinesEx((Rectangle) { 0, 0, g_world_width, g_world_height }, 4, WHITE);
 		EndMode2D();
 
 
@@ -505,16 +504,16 @@ int main() {
 
 		// Draw graph section background
 		
-		float graph_section_width = (int) (320.f * ui_ratio);
-		float graph_section_height = (int) (320.f * ui_ratio);
+		float graph_section_width = (int) (330.f * ui_ratio);
+		float graph_section_height = (int) (325.f * ui_ratio);
 
 		DrawRectangle(5, 5, graph_section_width, graph_section_height, ui_dark_grey);
-		float graph_width = 315.f * ui_ratio;
+		float graph_width = 330.f * ui_ratio;
 		float graph_height = 200.f * ui_ratio;
 
 		// Draw graph section
 
-		DrawRectangle(5, 5, (int) (320.f * ui_ratio), (int) (210.f * ui_ratio), ui_light_grey);
+		DrawRectangle(5, 5, (int) (330.f * ui_ratio), (int) (210.f * ui_ratio), ui_light_grey);
 
 		Graph_draw(total_cases_graph, 5, 10, graph_width, graph_height, agent_count, 0.f, 10, 2.f, RED);
 		Graph_draw(active_cases_graph, 5, 10, graph_width, graph_height, agent_count, 0.f, 10, 2.f, PURPLE);
@@ -524,39 +523,52 @@ int main() {
 		// Draw disease spread information
 
 		char text[30];
-		sprintf(text, "Total Cases: %i", total_cases);
-		DrawTextEx(default_font, text, (Vector2) { 15, 35 + graph_height }, (int)(25.f * ui_ratio), 0, RED);
+		sprintf(text, "Total Cases: %i (%.1f%)", total_cases, ((float)total_cases / (float)agent_count) * 100.f);
+		DrawTextEx(default_font, text, (Vector2) { 15, 30 + graph_height }, (int)(20.f * ui_ratio), 0, RED);
 
-		sprintf(text, "Active Cases: %i", active_cases);
-		DrawTextEx(default_font, text, (Vector2) { 15, 65 + graph_height }, (int)(25.f * ui_ratio), 0, PURPLE);
+		sprintf(text, "Active Cases: %i (%.1f%)", active_cases, ((float)active_cases / (float)agent_count) * 100.f);
+		DrawTextEx(default_font, text, (Vector2) { 15, 55 + graph_height }, (int)(20.f * ui_ratio), 0, PURPLE);
 
-		sprintf(text, "Diseased / Recovered: %i", removed);
-		DrawTextEx(default_font, text, (Vector2) { 15, 95 + graph_height }, (int)(25.f * ui_ratio), 0, GRAY);
+		sprintf(text, "Disease / Recovered: %i (%.1f%)", removed, ((float)removed / (float)agent_count) * 100.f);
+		DrawTextEx(default_font, text, (Vector2) { 15, 80 + graph_height }, (int)(20.f * ui_ratio), 0, GRAY);
+
+		sprintf(text, "Day: %i", (int) days);
+		DrawTextEx(default_font, text, (Vector2) { 15, 105 + graph_height }, (int)(20.f * ui_ratio), 0, WHITE);
 
 
 		// Draw slider section
-		DrawRectangle(5, graph_section_height + (30.f * ui_ratio), (int) (320.f * ui_ratio), (int) (250.f * ui_ratio), ui_dark_grey);
+		DrawRectangle(5, 315 + (30.f * ui_ratio), (int) (330.f * ui_ratio), (int) (295.f * ui_ratio), ui_dark_grey);
 		
 		// Draw each individual slider and it's text
 
-		DrawTextEx(default_font, "Social distance", (Vector2) { 15, 355 * ui_ratio }, 20, 0, WHITE);
-		social_distance_slider->y = (380.f * ui_ratio);
+		sprintf(text, "Simulation Speed (%.2f days/sec)", simulation_speed);
+		DrawTextEx(default_font, text, (Vector2) { 15, 355 * ui_ratio }, 20 * ui_ratio, 0, WHITE);
+		simulation_speed_slider->y = (380.f * ui_ratio);
+		Slider_draw(simulation_speed_slider, WHITE, ui_light_grey);
+
+		sprintf(text, "Social Distance (%.2fm)", (g_social_distance / 120) * 1.5f);
+		DrawTextEx(default_font, text, (Vector2) { 15, 400 * ui_ratio }, 20 * ui_ratio, 0, WHITE);
+		social_distance_slider->y = (430.f * ui_ratio);
 		Slider_draw(social_distance_slider, WHITE, ui_light_grey);
 
-		DrawTextEx(default_font, "Social distance multipliyer", (Vector2) { 15, 400 * ui_ratio }, 20, 0, WHITE);
-		social_distance_importance_slider->y = (430.f * ui_ratio);
+		sprintf(text, "Social Distance Multipliyer (x%.2f)", g_social_distance_factor);
+		DrawTextEx(default_font, text, (Vector2) { 15, 450 * ui_ratio }, 20 * ui_ratio, 0, WHITE);
+		social_distance_importance_slider->y = (480.f * ui_ratio);
 		Slider_draw(social_distance_importance_slider, WHITE, ui_light_grey);
 
-		DrawTextEx(default_font, "Infectivity", (Vector2) { 15, 450 * ui_ratio }, 20, 0, RED);
-		infection_chance_slider->y = (480.f * ui_ratio);
+		sprintf(text, "Infection Chance (%.1f%)", g_infection_chance * 100);
+		DrawTextEx(default_font, text, (Vector2) { 15, 500 * ui_ratio }, 20 * ui_ratio, 0, RED);
+		infection_chance_slider->y = (530.f * ui_ratio);
 		Slider_draw(infection_chance_slider, RED, ui_light_grey);
 
-		DrawTextEx(default_font, "Infection radius", (Vector2) { 15, 500 * ui_ratio }, 20, 0, RED);
-		infection_radius_slider->y = (530.f * ui_ratio);
+		sprintf(text, "Infection Radius (%.2fm)", (g_infection_radius / 120) * 1.5f);
+		DrawTextEx(default_font, text, (Vector2) { 15, 550 * ui_ratio }, 20 * ui_ratio, 0, RED);
+		infection_radius_slider->y = (580.f * ui_ratio);
 		Slider_draw(infection_radius_slider, RED, ui_light_grey);
 
-		DrawTextEx(default_font, "Infection duration", (Vector2) { 15, 550 * ui_ratio }, 20, 0, RED);
-		infection_duration_slider->y = (580.f * ui_ratio);
+		sprintf(text, "Infection Duration (~%.0f days)", (g_infection_duration));
+		DrawTextEx(default_font, text, (Vector2) { 15, 600 * ui_ratio }, 20 * ui_ratio, 0, RED);
+		infection_duration_slider->y = (630.f * ui_ratio);
 		Slider_draw(infection_duration_slider, RED, ui_light_grey);
 
 		DrawFPS(0, 0);
@@ -570,11 +582,11 @@ int main() {
 	Graph_destroy(active_cases_graph);
 	Graph_destroy(removed_graph);
 
+	Slider_destroy(simulation_speed_slider);
 	Slider_destroy(social_distance_slider);
 	Slider_destroy(social_distance_importance_slider);
 	Slider_destroy(infection_chance_slider);
 	Slider_destroy(infection_duration_slider);
-	Slider_destroy(infection_chance_slider);
 
 	Population_destroy(population);
 
