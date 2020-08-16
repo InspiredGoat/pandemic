@@ -51,9 +51,11 @@ void Graph_draw(Graph* graph, int x, int y, int width, int height, float max_val
 	if(current_point == 0)
 		return;
 
-	for(uint i = (current_point > show_up_to) * (current_point - show_up_to); i < current_point - 1; i++) {
-		i = i % show_up_to;
-		max_points = max_points % show_up_to;
+// (current_point > show_up_to) * (current_point - show_up_to)
+
+	for(uint i = 0; i < current_point - 1; i++) {
+//		i = i % (show_up_to-1);
+//		max_points = max_points % show_up_to;
 
 		int point_x = x + (int) ((float) i * (width/(float)max_points));
 		int neighbour_x = x + (int) ((float) (i + 1) * (width/(float)max_points));

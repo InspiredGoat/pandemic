@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
 
 #include <raylib.h>
 
@@ -38,10 +39,23 @@ inline float randf() {
 	return (rand()%10000) / 10000.f;
 }
 
+inline float square_dist(float x1, float y1, float x2, float y2) {
+	return ((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+}
+
 void rand_vector_array(Vector2* v, uint size, float min, float max) {
 	for(uint i = 0; i < size; i++) {
 		v[i].x = (randf() * (max - min)) + min;
 		v[i].y = (randf() * (max - min)) + min;
+	}
+}
+
+// randomize vector array with angle
+void rand_dir_array(Vector2* v, uint size) {
+	for(uint i = 0; i < size; i++) {
+		float angle = randf() * 2 * PI;
+		v[i].x = cos(angle);
+		v[i].y = sin(angle);
 	}
 }
 
@@ -103,8 +117,11 @@ Population* Population_create(ushort agent_count) {
 	population->directions = (Vector2*) malloc(sizeof(Vector2) * agent_count);
 	population->infected_periods = (byte*) malloc(sizeof(byte) * agent_count);
 
+	for(uint i = 0; i < agent_count; i++)
+		population->infected_periods[i] = 0;
+
 	uint n = (uint) (agent_count-1);
-	n = n * n + n;
+	n = n*n;
 	population->square_distance_count = n;
 	population->square_distances = (float*) malloc(sizeof(float) * n);
 
@@ -130,6 +147,9 @@ void Population_destroy(Population* population) {
 
 void agents_find_distances(float* square_distances, Vector2* positions, ushort agent_count) {
 	for(ushort i = 0; i < agent_count; i++) {
+		for(ushort j = 0; j < agent_count; j++) {
+			square_distances[i*agent_count + j] = square_dist(positions[i].x, positions[i].y, positions[j].x, positions[j].y);
+		}
 	}
 }
 
@@ -146,19 +166,33 @@ void agents_move(Vector2* directions, Vector2* positions, ushort agent_count, fl
 	}
 }
 
-void agents_spread_disease(Vector2* positions, byte* infected_periods, ushort agent_count) {
+void agents_spread_disease(Vector2* positions, float* square_distances, byte* infected_periods, ushort agent_count) {
+	for(ushort i = 0; i < agent_count; i++) {
+		if(infected_periods[i] > 0 && infected_periods[i] < 254) {
+			infected_periods[i]++;
+		}
+	}
+
 	for(ushort i = 0; i < agent_count; i++) {
 		if(infected_periods[i] > 0) {
 			for(ushort j = 0; j < agent_count; j++) {
-				
+				float dist = square_dist(positions[i].x, positions[i].y, positions[j].x, positions[j].y);
+				if(rand()%100 < 20 && dist < 1000)
+					infected_periods[j] = 1;
 			}
 		}
 	}
 }
 
-void agents_draw(Vector2* positions, ushort agent_count) {
+void agents_draw(Vector2* positions, byte* infected_periods, ushort agent_count) {
 	for(ushort i = 0; i < agent_count; i++) {
-		DrawCircle(positions[i].x, positions[i].y, 5, WHITE);
+		if(infected_periods[i] > 0) {
+			DrawCircle(positions[i].x, positions[i].y, 100, (Color) { 200, 0, 0, 1 });
+			DrawCircle(positions[i].x, positions[i].y, 5, RED);
+		}
+
+		else
+			DrawCircle(positions[i].x, positions[i].y, 5, WHITE);
 	}
 }
 
@@ -171,6 +205,7 @@ int main() {
 	Vector2* positions = population->positions;
 	Vector2* directions = population->directions;
 	byte* infected_periods = population->infected_periods;
+	float* square_distances = population->square_distances;
 	ushort agent_count = population->count;
 
 	Camera2D camera = { 0 };
@@ -188,9 +223,11 @@ int main() {
 	Graph* graph = Graph_create(1000);
 
 	rand_vector_array(positions, agent_count, 0, g_sections[0].width);
-	rand_vector_array(directions, agent_count, -1, 1);
+	rand_dir_array(directions, agent_count);
 
 	float counter = 0;
+
+	infected_periods[0] = 1;
 
 	while(!WindowShouldClose()) {
 		delta = GetFrameTime();
@@ -205,7 +242,11 @@ int main() {
 		// Simulation
 		agents_steer(directions, positions, agent_count);
 		agents_move(directions, positions, agent_count, delta);
-		agents_spread_disease(positions, infected_periods, agent_count);
+
+		if(counter < .2f) {
+			agents_spread_disease(positions, square_distances, infected_periods, agent_count);
+			counter = 0;
+		}
 		
 		// Rendering
 		BeginDrawing();
@@ -214,7 +255,7 @@ int main() {
 		// Draw scene
 		BeginMode2D(camera);
 
-		agents_draw(positions, agent_count);
+		agents_draw(positions, infected_periods, agent_count);
 		for(ushort i = 0; i < g_section_count; i++) {
 			DrawRectangleLinesEx(g_sections[i], 5, GREEN);
 		}
@@ -222,9 +263,9 @@ int main() {
 
 		// Draw UI
 		DrawFPS(0, 0);
-		DrawRectangle(0, 0, 400, 400, GREEN);
+		//DrawRectangle(0, 0, 200, 200, GREEN);
 		float max = Graph_get_highest_value(graph);
-		Graph_draw(graph, 0, 0, 400, 400, max + 10.f, 100, 3.f, RED);
+		Graph_draw(graph, 0, 0, 200, 200, 400.f, 100, 3.f, RED);
 		EndDrawing();
 	}
 
