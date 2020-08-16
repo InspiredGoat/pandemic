@@ -32,15 +32,31 @@ ushort g_hotspot_count;
 Rectangle g_sections[30];
 ushort g_section_count = 0;
 
+// Population parameters
+float g_square_social_distance = 1000;
+
 
 // Helper functions
 
-inline float randf() {
-	return (rand()%10000) / 10000.f;
+inline float square_root(float number) { 
+	int i; 
+	float x, y; 
+	x = number * 0.5; 
+	y = number; 
+	i = * (int *) &y; 
+	i = 0x5f3759df - (i >> 1); 
+	y = * (float *) &i; 
+	y = y * (1.5 - (x * y * y)); 
+	y = y * (1.5 - (x * y * y)); 
+	return number * y; 
 }
 
 inline float square_dist(float x1, float y1, float x2, float y2) {
 	return ((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
+}
+
+inline float randf() {
+	return (rand()%10000) / 10000.f;
 }
 
 void rand_vector_array(Vector2* v, uint size, float min, float max) {
@@ -57,6 +73,13 @@ void rand_dir_array(Vector2* v, uint size) {
 		v[i].x = cos(angle);
 		v[i].y = sin(angle);
 	}
+}
+
+inline Vector2 Vector_norm(Vector2 v) { 
+	float h = square_root((v.x * v.x) + (v.y * v.y)); 
+	v.x = v.x/h; 
+	v.y = v.y/h; 
+	return v; 
 }
 
 int min(int x, int y) {
@@ -121,7 +144,7 @@ Population* Population_create(ushort agent_count) {
 		population->infected_periods[i] = 0;
 
 	uint n = (uint) (agent_count-1);
-	n = n*n;
+	n = n*n*2;
 	population->square_distance_count = n;
 	population->square_distances = (float*) malloc(sizeof(float) * n);
 
@@ -153,9 +176,30 @@ void agents_find_distances(float* square_distances, Vector2* positions, ushort a
 	}
 }
 
-void agents_steer(Vector2* directions, Vector2* positions, ushort agent_count) {
+void agents_steer(Vector2* directions, Vector2* positions, float* square_distances, ushort agent_count) {
 	for(ushort i = 0; i < agent_count; i++) {
-		
+		Vector2 repulsion;
+		repulsion.x = 0;
+		repulsion.y = 0;
+
+		for(ushort j = 0; j < agent_count; j++) {
+			float dist = square_distances[i*agent_count + j];
+
+			if(j == i || dist < g_square_social_distance)
+				continue;
+
+			repulsion.x += (positions[i].x - positions[j].x) / dist;
+			repulsion.y += (positions[i].y - positions[j].y) / dist;
+		}
+
+		directions[i].x += repulsion.x;
+		directions[i].y += repulsion.y;
+
+		directions[i] = Vector_norm(repulsion);
+	}
+
+	// Bounce off walls
+	for(ushort i = 0; i < agent_count; i++) {
 	}
 }
 
@@ -174,11 +218,14 @@ void agents_spread_disease(Vector2* positions, float* square_distances, byte* in
 	}
 
 	for(ushort i = 0; i < agent_count; i++) {
-		if(infected_periods[i] > 0) {
+		if(infected_periods[i] > 1) {
 			for(ushort j = 0; j < agent_count; j++) {
-				float dist = square_dist(positions[i].x, positions[i].y, positions[j].x, positions[j].y);
-				if(rand()%100 < 20 && dist < 1000)
-					infected_periods[j] = 1;
+				if(infected_periods[j] == 0) {
+					float dist = square_distances[i*agent_count + j];
+
+					if(rand()%100 < 2 && dist < 500)
+						infected_periods[j] = 1;
+				}
 			}
 		}
 	}
@@ -196,11 +243,21 @@ void agents_draw(Vector2* positions, byte* infected_periods, ushort agent_count)
 	}
 }
 
+ushort agents_get_cases(byte* infected_periods, uint agent_count) {
+	ushort res = 0;
+
+	for(ushort i = 0; i < agent_count; i++) {
+		res += (infected_periods[i] > 0);
+	}
+	
+	return res;
+}
+
 
 int main() {
 	InitWindow(800, 800, "Pandemic");
 
-	Population* population = Population_create(100);
+	Population* population = Population_create(1000);
 
 	Vector2* positions = population->positions;
 	Vector2* directions = population->directions;
@@ -220,7 +277,7 @@ int main() {
 
 	float delta = 0;
 
-	Graph* graph = Graph_create(1000);
+	Graph* graph = Graph_create(3000);
 
 	rand_vector_array(positions, agent_count, 0, g_sections[0].width);
 	rand_dir_array(directions, agent_count);
@@ -234,13 +291,14 @@ int main() {
 
 		counter += delta;
 
-		Graph_add_point(graph, GetFPS());
+		Graph_add_point(graph, agents_get_cases(infected_periods, agent_count));
 
 		// Player input
 		player_move(&camera, delta);
 
 		// Simulation
-		agents_steer(directions, positions, agent_count);
+		agents_find_distances(square_distances, positions, agent_count);
+		agents_steer(directions, positions, square_distances, agent_count);
 		agents_move(directions, positions, agent_count, delta);
 
 		if(counter < .2f) {
@@ -263,9 +321,10 @@ int main() {
 
 		// Draw UI
 		DrawFPS(0, 0);
-		//DrawRectangle(0, 0, 200, 200, GREEN);
+//		DrawRectangle(0, 0, 500, 500, GREEN);
 		float max = Graph_get_highest_value(graph);
-		Graph_draw(graph, 0, 0, 200, 200, 400.f, 100, 3.f, RED);
+		Graph_draw(graph, 0, 0, 500, 500, agent_count, 00.f, 100 , 2.f, RED);
+
 		EndDrawing();
 	}
 

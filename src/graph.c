@@ -28,6 +28,17 @@ float Graph_get_highest_value(Graph* graph) {
 	return highest_value;
 }
 
+float Graph_get_lowest_value(Graph* graph) {
+	float lowest_value = graph->data_points[0];
+
+	for(uint i = 0; i < graph->max_points; i++)
+		if(lowest_value < graph->data_points[i])
+			lowest_value = graph->data_points[i];
+
+	return lowest_value;
+}
+
+
 void Graph_add_point(Graph* graph, float value) {
 	uint current_point = graph->current_point;
 	uint max_points = graph->max_points;
@@ -44,7 +55,7 @@ void Graph_add_point(Graph* graph, float value) {
 	}
 }
 
-void Graph_draw(Graph* graph, int x, int y, int width, int height, float max_value, uint show_up_to, float line_thickness, Color line_color) {
+void Graph_draw(Graph* graph, int x, int y, int width, int height, float max_value, float min_value, uint show_up_to, float line_thickness, Color line_color) {
 	uint current_point = graph->current_point;
 	uint max_points = graph->max_points;
 
@@ -58,11 +69,14 @@ void Graph_draw(Graph* graph, int x, int y, int width, int height, float max_val
 //		max_points = max_points % show_up_to;
 
 		int point_x = x + (int) ((float) i * (width/(float)max_points));
-		int neighbour_x = x + (int) ((float) (i + 1) * (width/(float)max_points));
 
-		int point_y = y + (int) (graph->data_points[i] * (height/max_value));
-		int neighbour_y = y + (int) (graph->data_points[i + 1] * (height/max_value));
+		float height_ratio = (max_value - min_value) + min_value;
+		int point_y = y + (int) height * (((max_value - graph->data_points[i]) - min_value) / (max_value - min_value));
 
-		DrawLineEx((Vector2) { point_x, point_y }, (Vector2) { neighbour_x, neighbour_y }, line_thickness, line_color);
+//		int neighbour_x = x + (int) ((float) (i + 1) * (width/(float)max_points));
+//		int neighbour_y = y + (int) height * (((max_value - graph->data_points[i + 1]) - min_value) / (max_value - min_value));
+
+//		DrawLineEx((Vector2) { point_x, point_y }, (Vector2) { neighbour_x, neighbour_y }, line_thickness, line_color);
+		DrawCircle(point_x, point_y, line_thickness, line_color);
 	}
 }
