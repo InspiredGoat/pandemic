@@ -166,7 +166,7 @@ void agents_draw(Vector2* positions, ushort agent_count) {
 int main() {
 	InitWindow(800, 800, "Pandemic");
 
-	Population* population = Population_create(1000);
+	Population* population = Population_create(100);
 
 	Vector2* positions = population->positions;
 	Vector2* directions = population->directions;
@@ -185,7 +185,7 @@ int main() {
 
 	float delta = 0;
 
-	Graph* graph = Graph_create(100);
+	Graph* graph = Graph_create(1000);
 
 	rand_vector_array(positions, agent_count, 0, g_sections[0].width);
 	rand_vector_array(directions, agent_count, -1, 1);
@@ -197,10 +197,7 @@ int main() {
 
 		counter += delta;
 
-		if(counter > .5f) {
-			Graph_add_point(graph, graph->current_point);
-			counter = 0;
-		}
+		Graph_add_point(graph, GetFPS());
 
 		// Player input
 		player_move(&camera, delta);
@@ -226,10 +223,12 @@ int main() {
 		// Draw UI
 		DrawFPS(0, 0);
 		DrawRectangle(0, 0, 400, 400, GREEN);
-		Graph_draw(graph, 0, 100, 400, 400, 100.f, 3.f, RED);
+		float max = Graph_get_highest_value(graph);
+		Graph_draw(graph, 0, 0, 400, 400, max + 10.f, 100, 3.f, RED);
 		EndDrawing();
 	}
 
+	Graph_destroy(graph);
 	Population_destroy(population);
 	return 0;
 }

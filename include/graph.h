@@ -12,5 +12,7 @@ typedef struct {
 Graph* Graph_create(uint max_points);
 void Graph_destroy(Graph* graph);
 
+float Graph_get_highest_value(Graph* graph);
+
 void Graph_add_point(Graph* graph, float value);
-void Graph_draw(Graph* graph, int x, int y, int width, int height, float max_value, float line_thickness, Color line_color);
+void Graph_draw(Graph* graph, int x, int y, int width, int height, float max_value, uint show_up_to, float line_thickness, Color line_color);
