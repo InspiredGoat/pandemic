@@ -143,11 +143,15 @@ void player_move(Camera2D* camera, float delta) {
 		camera->target.y -= (mouse_pos.y - mouse_pos_prev.y) / camera->zoom;
 	}
 
+	camera->target.x = Clamp(camera->target.x, g_sections[0].x-50, g_sections[0].width+50);
+	camera->target.y = Clamp(camera->target.y, g_sections[0].y-50, g_sections[0].height+50);
+
 	camera->offset.x = GetScreenWidth() / 2;
 	camera->offset.y = GetScreenHeight()  / 2;
 
 	int zoom_delta = (((-3 * GetMouseWheelMove()) | -IsKeyDown(KEY_Z)) | IsKeyDown(KEY_X));
 	camera->zoom *= 1 - zoom_delta * 4.9715f * delta;
+	camera->zoom = Clamp(camera->zoom, .15f, 1.f);
 
 	mouse_pos_prev = mouse_pos;
 }
@@ -247,8 +251,8 @@ void agents_steer(Vector2* directions, Vector2* positions, byte* infected_period
 
 void agents_move(Vector2* directions, Vector2* positions, ushort agent_count, float delta) {
 	for(ushort i = 0; i < agent_count; i++) {
-		positions[i].x += directions[i].x * delta * 70.f;
-		positions[i].y += directions[i].y * delta * 70.f; 
+		positions[i].x += directions[i].x * delta * 90.f;
+		positions[i].y += directions[i].y * delta * 90.f; 
 	}
 }
 
@@ -288,7 +292,7 @@ void agents_draw(Vector2* positions, byte* infected_periods, ushort agent_count)
 	white_color.a = 255;
 
 	Color red_color = { 0 };
-	red_color.r = 50 * g_infection_chance;
+	red_color.r = 50 * g_infection_chance + 50;
 	red_color.a = 255;
 
 	for(ushort i = 0; i < agent_count; i++) {
@@ -429,10 +433,10 @@ int main() {
 		if(IsMouseButtonReleased(0))
 			cursor_focus = 0;
 
-		else if(IsMouseButtonPressed(0) && GetMouseX() > 300 * ui_ratio)	
+		else if(IsMouseButtonPressed(0) && GetMouseX() > 320 * ui_ratio)	
 			cursor_focus = 2;
 
-		else if(IsMouseButtonPressed(0) && GetMouseX() <= 300 * ui_ratio)	
+		else if(IsMouseButtonPressed(0) && GetMouseX() <= 320 * ui_ratio)	
 			cursor_focus = 1;
 
 		// Update interactable objects
@@ -445,7 +449,7 @@ int main() {
 		}
 
 		// Handle player input
-		if((GetMouseX() > 300 * ui_ratio && cursor_focus == 0) || cursor_focus == 2) {
+		if((GetMouseX() > 320 * ui_ratio && cursor_focus == 0) || cursor_focus == 2) {
 			player_move(&camera, delta);
 		}
 
@@ -519,11 +523,11 @@ int main() {
 
 		// Draw disease spread information
 
-		char text[20];
+		char text[30];
 		sprintf(text, "Total Cases: %i", total_cases);
 		DrawTextEx(default_font, text, (Vector2) { 15, 35 + graph_height }, (int)(25.f * ui_ratio), 0, RED);
 
-		sprintf(text, "Cases: %i", active_cases);
+		sprintf(text, "Active Cases: %i", active_cases);
 		DrawTextEx(default_font, text, (Vector2) { 15, 65 + graph_height }, (int)(25.f * ui_ratio), 0, PURPLE);
 
 		sprintf(text, "Diseased / Recovered: %i", removed);
