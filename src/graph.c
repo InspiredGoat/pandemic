@@ -73,10 +73,10 @@ void Graph_draw(Graph* graph, int x, int y, int width, int height, float max_val
 		float height_ratio = (max_value - min_value) + min_value;
 		int point_y = y + (int) height * (((max_value - graph->data_points[i]) - min_value) / (max_value - min_value));
 
-//		int neighbour_x = x + (int) ((float) (i + 1) * (width/(float)max_points));
-//		int neighbour_y = y + (int) height * (((max_value - graph->data_points[i + 1]) - min_value) / (max_value - min_value));
+		int neighbour_x = x + (int) ((float) (i + 1) * (width/(float)max_points));
+		int neighbour_y = y + (int) height * (((max_value - graph->data_points[i + 1]) - min_value) / (max_value - min_value));
 
-//		DrawLineEx((Vector2) { point_x, point_y }, (Vector2) { neighbour_x, neighbour_y }, line_thickness, line_color);
-		DrawCircle(point_x, point_y, line_thickness, line_color);
+		DrawLineEx((Vector2) { point_x, point_y }, (Vector2) { neighbour_x, neighbour_y }, line_thickness, line_color);
+//		DrawCircle(point_x, point_y, line_thickness, line_color);
 	}
 }

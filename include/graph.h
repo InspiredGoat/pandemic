@@ -7,6 +7,9 @@ typedef struct {
 	uint max_points;
 	uint current_point;
 	float* data_points;
+
+	Texture2D texture;
+	RenderTexture2D render_texture;
 } Graph;
 
 Graph* Graph_create(uint max_points);

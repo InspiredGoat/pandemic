@@ -3,9 +3,11 @@
 #include <math.h>
 
 #include <raylib.h>
+#include <raymath.h>
 
 #include "../include/types.h"
 #include "../include/graph.h"
+#include "../include/slider.h"
 
 typedef struct {
 	Vector2* positions;
@@ -33,7 +35,14 @@ Rectangle g_sections[30];
 ushort g_section_count = 0;
 
 // Population parameters
-float g_square_social_distance = 1000;
+float g_social_distance = 10;
+float g_social_distance_factor = 0.01f;
+
+// Disease parameters
+float g_infection_radius = 22;
+float g_infection_chance = 0.2f;
+byte g_infection_duration = 20; // number of seconds until the agent will be removed from simulation
+byte g_time_until_contagious = 2; // number of seconds until agent will become contageous
 
 
 // Helper functions
@@ -185,56 +194,68 @@ void agents_steer(Vector2* directions, Vector2* positions, float* square_distanc
 		for(ushort j = 0; j < agent_count; j++) {
 			float dist = square_distances[i*agent_count + j];
 
-			if(j == i || dist < g_square_social_distance)
+			if(j == i || dist > g_social_distance * g_social_distance)
 				continue;
 
 			repulsion.x += (positions[i].x - positions[j].x) / dist;
 			repulsion.y += (positions[i].y - positions[j].y) / dist;
 		}
 
-		directions[i].x += repulsion.x;
-		directions[i].y += repulsion.y;
+		directions[i].x += repulsion.x * g_social_distance_factor;
+		directions[i].y += repulsion.y * g_social_distance_factor;
 
-		directions[i] = Vector_norm(repulsion);
+		directions[i].x += ((randf() * 2) - 1.f) / 100.f;
+		directions[i].y += ((randf() * 2) - 1.f) / 100.f;
+
+		directions[i].x = Clamp(directions[i].x, -1, 1);
+		directions[i].y = Clamp(directions[i].y, -1, 1);
 	}
 
 	// Bounce off walls
 	for(ushort i = 0; i < agent_count; i++) {
-		if((positions[i].x < g_sections[0].x + 10 && directions[i].x < 0) || (positions[i].x > g_sections[0].width - 10 && directions[i].x > 0)) {
-			directions[i].x *= -1;
-		}
+		for(ushort j = 0; j < g_section_count; j++) {
+			
+			if((positions[i].x < g_sections[j].x + 10 && directions[i].x < 0) || (positions[i].x > g_sections[j].width - 10 && directions[i].x > 0)) {
+				directions[i].x *= -1;
+			}
 
-		if((positions[i].y < g_sections[0].y + 10 && directions[i].y < 0) || (positions[i].y > g_sections[0].height - 10 && directions[i].y > 0)) {
-			directions[i].y *= -1;
+			if((positions[i].y < g_sections[j].y + 10 && directions[i].y < 0) || (positions[i].y > g_sections[j].height - 10 && directions[i].y > 0)) {
+				directions[i].y *= -1;
+			}
 		}
-//		for(ushort j = 0; j < g_section_count; j++)
-//			// If is touching wall, invert directions pointing at wall
-//			if(positions[i].x < ) {
-//			}
 	}
 }
 
 void agents_move(Vector2* directions, Vector2* positions, ushort agent_count, float delta) {
 	for(ushort i = 0; i < agent_count; i++) {
-		positions[i].x += directions[i].x * delta * 50.f;
-		positions[i].y += directions[i].y * delta * 50.f; 
+		positions[i].x += directions[i].x * delta * 70.f;
+		positions[i].y += directions[i].y * delta * 70.f; 
+	}
+}
+
+void agents_age(byte* infected_periods, uint agent_count) {
+	for(ushort i = 0; i < agent_count; i++) {
+		if(infected_periods[i] > 0 && infected_periods[i] < g_infection_duration) {
+			infected_periods[i] += (rand()%100>10);
+		}
 	}
 }
 
 void agents_spread_disease(Vector2* positions, float* square_distances, byte* infected_periods, ushort agent_count) {
+
 	for(ushort i = 0; i < agent_count; i++) {
-		if(infected_periods[i] > 0 && infected_periods[i] < 254) {
+		if(infected_periods[i] == 1) {
 			infected_periods[i]++;
 		}
 	}
 
 	for(ushort i = 0; i < agent_count; i++) {
-		if(infected_periods[i] > 1) {
+		if(infected_periods[i] >= g_time_until_contagious && infected_periods[i] < g_infection_duration) {
 			for(ushort j = 0; j < agent_count; j++) {
 				if(infected_periods[j] == 0) {
 					float dist = square_distances[i*agent_count + j];
 
-					if(rand()%100 < 2 && dist < 500)
+					if(rand()%100 < 40 && dist < (g_infection_radius * g_infection_radius))
 						infected_periods[j] = 1;
 				}
 			}
@@ -244,14 +265,38 @@ void agents_spread_disease(Vector2* positions, float* square_distances, byte* in
 
 void agents_draw(Vector2* positions, byte* infected_periods, ushort agent_count) {
 	for(ushort i = 0; i < agent_count; i++) {
-		if(infected_periods[i] > 0) {
-			DrawCircle(positions[i].x, positions[i].y, 100, (Color) { 200, 0, 0, 1 });
+		if(infected_periods[i] > 0 && infected_periods[i] < g_infection_duration) {
+			DrawCircle(positions[i].x, positions[i].y, g_infection_radius, (Color) { 200, 0, 0, 100 });
+		}
+
+		else if(infected_periods[i] == 0) {
+			DrawCircle(positions[i].x, positions[i].y, g_social_distance, (Color) { 200, 200, 200, 50 * g_social_distance_factor });
+		}
+	}
+
+	for(ushort i = 0; i < agent_count; i++) {
+		if(infected_periods[i] == g_infection_duration) {
+			DrawCircle(positions[i].x, positions[i].y, 5, GRAY);
+		}
+
+		else if(infected_periods[i] >= g_time_until_contagious) {
 			DrawCircle(positions[i].x, positions[i].y, 5, RED);
 		}
 
-		else
+		else {
 			DrawCircle(positions[i].x, positions[i].y, 5, WHITE);
+		}
 	}
+}
+
+ushort agents_get_active_cases(byte* infected_periods, uint agent_count) {
+	ushort res = 0;
+
+	for(ushort i = 0; i < agent_count; i++) {
+		res += (infected_periods[i] > 0 && infected_periods[i] < g_infection_duration);
+	}
+	
+	return res;
 }
 
 ushort agents_get_cases(byte* infected_periods, uint agent_count) {
@@ -264,9 +309,20 @@ ushort agents_get_cases(byte* infected_periods, uint agent_count) {
 	return res;
 }
 
+ushort agents_get_removed(byte* infected_periods, uint agent_count) {
+	ushort res = 0;
+
+	for(ushort i = 0; i < agent_count; i++) {
+		res += (infected_periods[i] >= g_infection_duration);
+	}
+	
+	return res;
+}
+
 
 int main() {
-	InitWindow(800, 800, "Pandemic");
+	SetConfigFlags(FLAG_MSAA_4X_HINT);	
+	InitWindow(1280, 720, "Pandemic");
 
 	Population* population = Population_create(1000);
 
@@ -279,44 +335,83 @@ int main() {
 	Camera2D camera = { 0 };
 	camera.zoom = 1.f;
 
+	float val = 0;
+
 	g_sections[0].x = 0;
 	g_sections[0].y = 0;
-	g_sections[0].width = 1000;
-	g_sections[0].height = 1000;
+	g_sections[0].width = 3000;
+	g_sections[0].height = 3000;
 
 	g_section_count = 1;
 
-	float delta = 0;
+	// Check to see if cursor was first pressed insde the world or not
+	bool player_in_world = false;
 
-	Graph* graph = Graph_create(3000);
+
+	Graph* cases_graph = Graph_create(1000);
+	Graph* active_cases_graph = Graph_create(1000);
+	Graph* removed_graph = Graph_create(1000);
+
+	Slider* social_distance_slider = Slider_create(10, 80, 300, 5, &g_social_distance, 20.f, 100.f);
+	Slider* social_distance_importance_slider = Slider_create(10, 10, 300, 5, &g_social_distance_factor, 0.f, 1.f);
 
 	rand_vector_array(positions, agent_count, 0, g_sections[0].width);
 	rand_dir_array(directions, agent_count);
 
+	float second_counter = 0;
 	float counter = 0;
+	float delta = 0;
 
+	// Randomly infect one member of the population
 	infected_periods[0] = 1;
 
 	while(!WindowShouldClose()) {
+		float ui_ratio = GetScreenWidth() / 1280.f;
 		delta = GetFrameTime();
 
+		second_counter += delta;
 		counter += delta;
 
-		Graph_add_point(graph, agents_get_cases(infected_periods, agent_count));
+		// Scale UI
+		social_distance_slider->width = 300*ui_ratio;
+		social_distance_importance_slider->width = 300*ui_ratio;
+
+		// Update UI
+		if(!player_in_world) {
+			Slider_update(social_distance_slider);
+			Slider_update(social_distance_importance_slider);
+		}
+
+		if(player_in_world && IsMouseButtonReleased(0)) 
+			player_in_world = false;
 
 		// Player input
-		player_move(&camera, delta);
+		if(GetMouseX() > 400 * ui_ratio || player_in_world) {
+			if(IsMouseButtonPressed(0)) {
+				player_in_world = true;
+			}
+
+			player_move(&camera, delta);
+		}
 
 		// Simulation
 		agents_find_distances(square_distances, positions, agent_count);
 		agents_steer(directions, positions, square_distances, agent_count);
 		agents_move(directions, positions, agent_count, delta);
 
-		if(counter < .2f) {
+		if(counter > .1f) {
+			Graph_add_point(cases_graph, agents_get_cases(infected_periods, agent_count));
+			Graph_add_point(active_cases_graph, agents_get_active_cases(infected_periods, agent_count));
+			Graph_add_point(removed_graph, agents_get_removed(infected_periods, agent_count));
 			agents_spread_disease(positions, square_distances, infected_periods, agent_count);
 			counter = 0;
 		}
-		
+
+		if(second_counter > 1.f) {
+			agents_age(infected_periods, agent_count);
+			second_counter = 0;
+		}
+
 		// Rendering
 		BeginDrawing();
 		ClearBackground(BLACK);
@@ -326,20 +421,34 @@ int main() {
 
 		agents_draw(positions, infected_periods, agent_count);
 		for(ushort i = 0; i < g_section_count; i++) {
-			DrawRectangleLinesEx(g_sections[i], 5, GREEN);
+			DrawRectangleLinesEx(g_sections[i], 3, WHITE);
 		}
 		EndMode2D();
 
 		// Draw UI
 		DrawFPS(0, 0);
-//		DrawRectangle(0, 0, 500, 500, GREEN);
-		float max = Graph_get_highest_value(graph);
-		Graph_draw(graph, 0, 0, 500, 500, agent_count, 00.f, 100 , 2.f, RED);
+
+		//DrawRectangle(10, 10, (int) (400.f * ui_ratio), (int) (200.f * ui_ratio), GREEN);
+		//float max = Graph_get_highest_value(graph);
+		Graph_draw(cases_graph, 10, 10, (int) (400.f * ui_ratio), (int) (200.f * ui_ratio), agent_count, 0.f, 10, 2.f, RED);
+		Graph_draw(active_cases_graph, 10, 10, (int) (400.f * ui_ratio), (int) (200.f * ui_ratio), agent_count, 0.f, 10, 2.f, PURPLE);
+		Graph_draw(removed_graph, 10, 10, (int) (400.f * ui_ratio), (int) (200.f * ui_ratio), agent_count, 0.f, 10, 2.f, GRAY);
+
+		social_distance_slider->y = (240.f * ui_ratio);
+		social_distance_importance_slider->y = (300.f * ui_ratio);
+		Slider_draw(social_distance_slider, GREEN, BLUE);
+		Slider_draw(social_distance_importance_slider, GREEN, BLUE);
 
 		EndDrawing();
 	}
 
-	Graph_destroy(graph);
+	Graph_destroy(cases_graph);
+	Graph_destroy(active_cases_graph);
+	Graph_destroy(removed_graph);
+
+	Slider_destroy(social_distance_slider);
+	Slider_destroy(social_distance_importance_slider);
+
 	Population_destroy(population);
 	return 0;
 }
