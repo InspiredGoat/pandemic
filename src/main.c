@@ -354,7 +354,7 @@ int main() {
 	SetConfigFlags(FLAG_MSAA_4X_HINT);	
 	InitWindow(1280, 720, "Pandemic");
 
-	Population* population = Population_create(1000);
+	Population* population = Population_create(800);
 
 	// Get pointers to all population arrays to simlify code later on
 	Vector2* positions = population->positions;
@@ -369,8 +369,8 @@ int main() {
 	default_font = LoadFontEx("Bwana.otf", 30, 0, 0);
 	SetTextureFilter(default_font.texture, FILTER_TRILINEAR);
 
-	g_world_width = 3000;
-	g_world_height = 3000;
+	g_world_width = 4000;
+	g_world_height = 4000;
 
 	Camera2D camera = { 0 };
 	camera.zoom = .231f;
@@ -389,10 +389,10 @@ int main() {
 	Graph* active_cases_graph = Graph_create(400);
 	Graph* removed_graph = Graph_create(400);
 
-	Slider* simulation_speed_slider = Slider_create(15, 80, 300, 3, &simulation_speed, 0.f, 4.f);
+	Slider* simulation_speed_slider = Slider_create(15, 80, 300, 3, &simulation_speed, 0.f, 3.f);
 	Slider* social_distance_slider = Slider_create(15, 80, 300, 3, &g_social_distance, 20.f, 120.f);
 	Slider* social_distance_importance_slider = Slider_create(15, 10, 300, 3, &g_social_distance_factor, 0.f, 1.f);
-	Slider* infection_radius_slider = Slider_create(15, 10, 300, 3, &g_infection_radius, 40.f, 120.f);
+	Slider* infection_radius_slider = Slider_create(15, 10, 300, 3, &g_infection_radius, 40.f, 100.f);
 	Slider* infection_chance_slider = Slider_create(15, 10, 300, 3, &g_infection_chance, 0.05f, 1.f);
 	Slider* infection_duration_slider = Slider_create(15, 10, 300, 3, &g_infection_duration, 5.f, 30.f);
 
@@ -430,10 +430,10 @@ int main() {
 		if(IsMouseButtonReleased(0))
 			cursor_focus = 0;
 
-		else if(IsMouseButtonPressed(0) && GetMouseX() > 330 * ui_ratio)	
+		else if(IsMouseButtonPressed(0) && (GetMouseX() > 330 * ui_ratio || GetMouseY() > 660 * ui_ratio))
 			cursor_focus = 2;
 
-		else if(IsMouseButtonPressed(0) && GetMouseX() <= 330 * ui_ratio)	
+		else if(IsMouseButtonPressed(0) && (GetMouseX() < 330 * ui_ratio && GetMouseY() < 660 * ui_ratio))
 			cursor_focus = 1;
 
 		// Update interactable objects
@@ -447,7 +447,7 @@ int main() {
 		}
 
 		// Handle player input
-		if((GetMouseX() > 330 * ui_ratio && cursor_focus == 0) || cursor_focus == 2) {
+		if(((GetMouseX() > 330 * ui_ratio || GetMouseY() > 660 * ui_ratio) && cursor_focus == 0) || cursor_focus == 2) {
 			player_move(&camera, delta);
 		}
 
