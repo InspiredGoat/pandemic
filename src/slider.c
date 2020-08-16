@@ -33,7 +33,7 @@ void Slider_update(Slider* slider) {
 		*slider->value = slider->ratio * (slider->max_value - slider->min_value) + slider->min_value;
 	}
 
-	if((GetMouseX() > slider->x-15 && GetMouseX() < slider->x + slider->width+15) && (GetMouseY() > slider->y-30 && GetMouseY() < slider->y + slider->height+30))
+	if((GetMouseX() > slider->x-15 && GetMouseX() < slider->x + slider->width+15) && (GetMouseY() > slider->y-15 && GetMouseY() < slider->y + slider->height+15))
 		slider->hovered = true;
 	else
 		slider->hovered = false;

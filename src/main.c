@@ -41,8 +41,8 @@ float g_social_distance_factor = 0.01f;
 // Disease parameters
 float g_infection_radius = 22;
 float g_infection_chance = 0.2f;
-byte g_infection_duration = 20; // number of seconds until the agent will be removed from simulation
-byte g_time_until_contagious = 2; // number of seconds until agent will become contageous
+byte g_infection_duration = 10;
+byte g_time_until_contagious = 2;
 
 
 // Helper functions
@@ -236,7 +236,7 @@ void agents_move(Vector2* directions, Vector2* positions, ushort agent_count, fl
 void agents_age(byte* infected_periods, uint agent_count) {
 	for(ushort i = 0; i < agent_count; i++) {
 		if(infected_periods[i] > 0 && infected_periods[i] < g_infection_duration) {
-			infected_periods[i] += (rand()%100>10);
+			infected_periods[i] += (rand()%100<10);
 		}
 	}
 }
@@ -332,6 +332,10 @@ int main() {
 	float* square_distances = population->square_distances;
 	ushort agent_count = population->count;
 
+	int font_chars;
+	Font default_font;
+	default_font = LoadFontEx("Symbola.ttf", 50, font_chars, 255);
+
 	Camera2D camera = { 0 };
 	camera.zoom = 1.f;
 
@@ -352,13 +356,12 @@ int main() {
 	Graph* active_cases_graph = Graph_create(1000);
 	Graph* removed_graph = Graph_create(1000);
 
-	Slider* social_distance_slider = Slider_create(10, 80, 300, 5, &g_social_distance, 20.f, 100.f);
-	Slider* social_distance_importance_slider = Slider_create(10, 10, 300, 5, &g_social_distance_factor, 0.f, 1.f);
+	Slider* social_distance_slider = Slider_create(10, 80, 300, 3, &g_social_distance, 20.f, 100.f);
+	Slider* social_distance_importance_slider = Slider_create(10, 10, 300, 3, &g_social_distance_factor, 0.f, 1.f);
 
 	rand_vector_array(positions, agent_count, 0, g_sections[0].width);
 	rand_dir_array(directions, agent_count);
 
-	float second_counter = 0;
 	float counter = 0;
 	float delta = 0;
 
@@ -369,12 +372,11 @@ int main() {
 		float ui_ratio = GetScreenWidth() / 1280.f;
 		delta = GetFrameTime();
 
-		second_counter += delta;
 		counter += delta;
 
 		// Scale UI
-		social_distance_slider->width = 300*ui_ratio;
-		social_distance_importance_slider->width = 300*ui_ratio;
+		social_distance_slider->width = 200*ui_ratio;
+		social_distance_importance_slider->width = 200*ui_ratio;
 
 		// Update UI
 		if(!player_in_world) {
@@ -399,17 +401,13 @@ int main() {
 		agents_steer(directions, positions, square_distances, agent_count);
 		agents_move(directions, positions, agent_count, delta);
 
-		if(counter > .1f) {
+		if(counter > .2f) {
 			Graph_add_point(cases_graph, agents_get_cases(infected_periods, agent_count));
 			Graph_add_point(active_cases_graph, agents_get_active_cases(infected_periods, agent_count));
 			Graph_add_point(removed_graph, agents_get_removed(infected_periods, agent_count));
 			agents_spread_disease(positions, square_distances, infected_periods, agent_count);
-			counter = 0;
-		}
-
-		if(second_counter > 1.f) {
 			agents_age(infected_periods, agent_count);
-			second_counter = 0;
+			counter = 0;
 		}
 
 		// Rendering
@@ -434,13 +432,17 @@ int main() {
 		Graph_draw(active_cases_graph, 10, 10, (int) (400.f * ui_ratio), (int) (200.f * ui_ratio), agent_count, 0.f, 10, 2.f, PURPLE);
 		Graph_draw(removed_graph, 10, 10, (int) (400.f * ui_ratio), (int) (200.f * ui_ratio), agent_count, 0.f, 10, 2.f, GRAY);
 
+		DrawTextEx(default_font, "Jeff by name, Jeff by game", (Vector2) { 5, 5 }, 30, 5, WHITE);
+
 		social_distance_slider->y = (240.f * ui_ratio);
-		social_distance_importance_slider->y = (300.f * ui_ratio);
-		Slider_draw(social_distance_slider, GREEN, BLUE);
-		Slider_draw(social_distance_importance_slider, GREEN, BLUE);
+		social_distance_importance_slider->y = (280.f * ui_ratio);
+		Slider_draw(social_distance_slider, WHITE, GRAY);
+		Slider_draw(social_distance_importance_slider, WHITE, GRAY);
 
 		EndDrawing();
 	}
+
+	UnloadFont(default_font);
 
 	Graph_destroy(cases_graph);
 	Graph_destroy(active_cases_graph);
